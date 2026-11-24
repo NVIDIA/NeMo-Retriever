@@ -336,16 +336,17 @@ The following settings configure Parse independently of the OCR model.
 
 | Field | Behavior |
 | --- | --- |
+| `mode` | Select `single` (default), `double`, or `triple`. Double and triple require full-page Parse 3.5. Refer to [Multi-pass parsing](#parse-35-multi-pass). |
 | `model`, `invoke_url` | Select the model and optional remote endpoint. Omit the URL for local inference. Parse 3.5 sampling and chart routing use `/v1/chat/completions` endpoints. |
 | `api_key`, `request_timeout_s` | Override only Parse credentials and the positive request timeout. Unset values inherit extraction settings. `NO_API_KEY` disables authentication for Parse only. |
 | `table_format` | Select `HTML`, `simple_html`, `markdown`, or `latex`. Full-page Parse defaults to `markdown`; chart routing defaults to `simple_html`. |
-| `task_prompt` | Override the native Parse control-token prompt for full-page extraction or chart routing. The default, `None`, preserves the selected model's prompt. |
-| `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. Legacy models retain their defaults. |
+| `task_prompt` | Override the native Parse control-token prompt for single-pass full-page extraction or chart routing. The default, `None`, preserves the selected model's prompt. Double and triple modes require `None` and use the Hugging Face stage prompts. |
+| `temperature`, `repetition_penalty`, `top_k`, `top_p`, `seed`, `max_tokens` | Override generation settings for local Parse 3.5 or a Parse 3.5 chat-completions endpoint. In double and triple modes, overrides affect only the full-page stage. Legacy models retain their defaults. |
 | `length_retry_max_tokens` | Rerun local Parse 3.5 pages that stop at the output token limit with this larger limit. Pages whose output ends in repeated text are not rerun. Applies only when the value is larger than the first limit. The local default first limit is 9,000 tokens, so set `max_tokens` below `length_retry_max_tokens` (for example, `4096`) to use the rerun. Defaults to `8192`. Set `None` to disable the rerun. |
 | `text_layer_min_overlap` | Use the native PDF text layer as page text when fewer than this fraction of the Parse page-text words occur in it, or when Parse returns no page text. Applies to pages with at least 30 native words. Text-layer lines already present in the page's table, chart, or infographic output are left out. Defaults to `0.3`. Set `0` to keep Parse page text. |
 
 To include text inside pictures, pass the complete control-token prompt.
-This setting applies to both full-page Parse and chart routing.
+This setting applies to single-pass full-page Parse and chart routing.
 
 ```python
 parse = ParseParams(
@@ -385,6 +386,118 @@ and `content_columns` take precedence over edits to their assembled text.
 If an edit makes region positions or identities ambiguous, collapse and
 Markdown export raise `ValueError`. Edit the original extraction fields and
 collapse them again to resolve the ambiguity.
+
+#### Multi-pass parsing { #parse-35-multi-pass }
+
+Set `ParseParams.mode` to refine table and chart regions with the pinned
+Hugging Face `DocumentParser`. A pass is a processing stage, so a page with
+several regions can produce several crop requests.
+
+The following modes are available.
+
+| Mode | Processing |
+| --- | --- |
+| `single` | Parses the full page once. This default preserves existing generation settings and behavior. |
+| `double` | Parses the full page, parses its Table and Chart crops, and merges the results. |
+| `triple` | Also detects regions with Parse 3.5, then refines the union of detected and full-page parsed regions. |
+
+Double and triple modes require `method="nemotron_parse"` and Parse 3.5.
+They support local vLLM, with DFlash2 enabled by default, and remote
+`/v1/chat/completions` endpoints with an explicit
+`model="nvidia/Nemotron-3.5-Parse"`. Native `/v1/parse` endpoints, legacy
+models, chart routing, and any non-`None` task prompt are rejected.
+The hosted NVIDIA Build tool-call endpoint does not support these modes.
+Direct Transformers inference does not support multi-pass parsing.
+
+Multi-pass parsing uses the Hugging Face stage prompts. Its full-page prompt
+includes `<predict_text_in_pic>`, while single-pass parsing preserves the
+NRL default of `<predict_no_text_in_pic>`. Leave `task_prompt` unset or set it
+to `None` for double and triple modes. All non-`None` values are rejected,
+even when they match the Hugging Face full-page prompt.
+
+The following example runs local triple-pass extraction. Change `mode` to
+`"double"` to use double-pass extraction.
+
+```python
+from nemo_retriever import create_ingestor
+from nemo_retriever.common.params import ExtractParams, ParseParams
+
+
+def main():
+    return (
+        create_ingestor(run_mode="inprocess")
+        .files(["report.pdf"])
+        .extract(
+            ExtractParams(
+                method="nemotron_parse",
+                parse=ParseParams(
+                    model="nvidia/Nemotron-3.5-Parse",
+                    mode="triple",
+                ),
+            )
+        )
+        .ingest()
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+To use a compatible remote server, replace `ParseParams(...)` in that example
+with the following configuration. Adjust the URL to match your deployment.
+
+```python
+ParseParams(
+    model="nvidia/Nemotron-3.5-Parse",
+    mode="triple",
+    invoke_url="http://localhost:8000/v1/chat/completions",
+)
+```
+
+Multi-pass parsing uses the following Hugging Face stage defaults.
+
+| Stage | Temperature | Repetition penalty | Maximum output tokens |
+| --- | --- | --- | --- |
+| Full page | `0.2` | `1.05` | `8744` |
+| Detection, in triple mode | `0.2` | `1.05` | `4096` |
+| Table or chart crop | `0.1` | `1.0` | `8744` |
+
+All stages default to `top_k=50`, `top_p=1.0`, and `seed=0`. Explicit
+`ParseParams` generation settings override only the full-page stage.
+Detection and crop settings, image preparation, crop limits, margins, and the
+`alternatives` merge policy retain the pinned Hugging Face defaults.
+
+For a controlled comparison across modes, configure single-pass parsing with
+the same full-page prompt and generation settings as multi-pass parsing.
+
+```python
+ParseParams(
+    model="nvidia/Nemotron-3.5-Parse",
+    mode="single",
+    task_prompt="</s><s><predict_bbox><predict_classes><output_markdown><predict_text_in_pic>",
+    temperature=0.2,
+    repetition_penalty=1.05,
+    top_k=50,
+    top_p=1.0,
+    seed=0,
+    max_tokens=8744,
+)
+```
+
+Keep the decoding configuration fixed across modes. Record the model and
+helper revisions, serving configuration, input images, latency, and failures.
+NRL retains its existing output routing, table formatting, and Markdown
+export, so exported Markdown can differ from the Hugging Face renderer.
+Matching inference settings alone does not establish benchmark score parity.
+
+Multi-pass diagnostics record the mode, request count, effective stage
+settings, and helper revision under `nemotron_parse_v1_2.multipass`. Failed
+or truncated stages follow the existing Parse batch-error behavior and
+identify the failing stage and completion reason when available. Multi-pass parsing does not
+silently return single-pass output after a failed stage. Refer to
+[Choose raise or collect behavior](#choose-raise-or-collect-behavior) for
+handling extraction failures.
 
 ### Route chart crops to Parse 3.5 { #route-chart-crops-to-parse-35 }
 

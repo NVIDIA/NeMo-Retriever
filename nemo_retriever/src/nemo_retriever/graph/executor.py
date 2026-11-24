@@ -1049,6 +1049,7 @@ class RayDataExecutor(AbstractExecutor):
         for node in nodes:
             overrides = dict(self._node_overrides.get(node.name, {}))
             target_num_rows_per_block = overrides.pop("target_num_rows_per_block", None)
+            explicit_batch_size = "batch_size" in overrides
             batch_size = overrides.pop("batch_size", self._default_batch_size)
             batch_format = overrides.pop("batch_format", self._default_batch_format)
             num_cpus = overrides.pop("num_cpus", self._default_num_cpus)
@@ -1062,8 +1063,10 @@ class RayDataExecutor(AbstractExecutor):
             from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
             from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
 
-            if batch_size == self._default_batch_size and issubclass(
-                node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)
+            if (
+                not explicit_batch_size
+                and batch_size == self._default_batch_size
+                and issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor))
             ):
                 batch_size = NEMOTRON_PARSE_BATCH_SIZE
 

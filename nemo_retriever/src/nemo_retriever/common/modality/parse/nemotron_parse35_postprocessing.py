@@ -70,12 +70,14 @@ def _load_parse35_helpers() -> ModuleType:
         return module
 
 
-def _postprocess_parse35_blocks(raw_text: str, *, table_format: str = "HTML") -> list[dict[str, Any]]:
+def _postprocess_parse35_blocks(
+    raw_text: str, *, table_format: str = "HTML", document: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Decode tagged model output and set the rendering of Table blocks.
 
-    HF's ``postprocess_document`` extracts blocks with their classes, boxes,
-    raw text, and rendered content. Keep the returned block order and all
-    non-Table content, including Chart rendering.
+    Reuse the document from multi-pass inference when available. Otherwise,
+    run HF postprocessing on the tagged output. Keep the block order and
+    all non-Table content, including Chart rendering.
 
     For Table blocks, ``HTML`` keeps the HF rendering. ``simple_html`` removes
     only cell spans equal to one, preserving merged cells. ``markdown`` and
@@ -88,7 +90,8 @@ def _postprocess_parse35_blocks(raw_text: str, *, table_format: str = "HTML") ->
     if table_format not in ("HTML", "simple_html", "markdown", "latex"):
         raise ValueError("table_format must be HTML, simple_html, markdown, or latex.")
     helpers = _load_parse35_helpers()
-    document = helpers.postprocess_document(raw_text)
+    if document is None:
+        document = helpers.postprocess_document(raw_text)
     for warning in document.get("warnings", []):
         logger.warning("Parse 3.5 postprocessing: %s", warning["message"])
     blocks = document["blocks"]
@@ -96,6 +99,9 @@ def _postprocess_parse35_blocks(raw_text: str, *, table_format: str = "HTML") ->
         if block["class"] != "Table":
             continue
         if table_format in ("markdown", "latex"):
+            if block.get("text") is None:
+                # Merged multi-pass blocks can carry only rendered content.
+                continue
             try:
                 block["content"] = helpers.postprocessing.postprocess_text(
                     block["text"], "Table", table_format=table_format
