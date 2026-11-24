@@ -301,6 +301,7 @@ def _create_local_embedder_from_spec(
     from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder import (
         LlamaNemotronEmbed1BV2Embedder,
     )
+    from nemo_retriever.models.inference.vllm import VLLM_ATTENTION_BACKEND
 
     return LlamaNemotronEmbed1BV2Embedder(
         model_id=model_id,
@@ -314,6 +315,7 @@ def _create_local_embedder_from_spec(
         revision=spec.revision,
         query_prefix=spec.query_prefix,
         document_prefix=spec.document_prefix,
+        attention_backend=None if spec.model_type == "embedding_gemma2" else VLLM_ATTENTION_BACKEND,
     )
 
 
