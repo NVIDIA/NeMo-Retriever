@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 import torch
 
+from nemo_retriever.common import nvtx_layers
+
 if TYPE_CHECKING:
     from nemo_retriever.models.inference.embedding_input import EmbeddingSplitPlan
 
@@ -148,7 +150,8 @@ class Nemotron35Embedder:
         self._ensure_loaded()
         prefix = self.query_prefix if query else self.document_prefix
         limit = self.query_max_length if query else self.max_length
-        prompts = [render_retrieval_input(self._template, prefix, text, image=images is not None) for text in texts]
+        with nvtx_layers.span("NRL", "render_prompts"):
+            prompts = [render_retrieval_input(self._template, prefix, text, image=images is not None) for text in texts]
         step = max(1, int(batch_size))
         if self.backend == "hf":
             step = min(step, 2 if images is not None else 8)
@@ -203,36 +206,38 @@ class Nemotron35Embedder:
                         )
 
                 # Raw tokens prevent a second template pass or duplicate BOS/EOS.
-                requests = []
-                for j in range(len(current)):
-                    if images is None:
-                        ids = batch["input_ids"][j][batch["attention_mask"][j].bool()].tolist()
-                        request = {"prompt_token_ids": ids}
-                    else:
-                        # vLLM owns image expansion; do not send HF-expanded IDs.
-                        request = {
-                            "prompt": current[j],
-                            "multi_modal_data": {"image": images[i + j]},
-                            "mm_processor_kwargs": {
-                                "text_kwargs": {"truncation": False, "add_special_tokens": False},
-                            },
-                        }
-                    requests.append(request)
-                inference_kwargs = {}
-                if images is not None:
-                    # Match admission, independent of checkpoint defaults.
-                    inference_kwargs["tokenization_kwargs"] = {"add_special_tokens": False, "truncation": False}
+                with nvtx_layers.span("NRL", "build_requests"):
+                    requests = []
+                    for j in range(len(current)):
+                        if images is None:
+                            ids = batch["input_ids"][j][batch["attention_mask"][j].bool()].tolist()
+                            request = {"prompt_token_ids": ids}
+                        else:
+                            # vLLM owns image expansion; do not send HF-expanded IDs.
+                            request = {
+                                "prompt": current[j],
+                                "multi_modal_data": {"image": images[i + j]},
+                                "mm_processor_kwargs": {
+                                    "text_kwargs": {"truncation": False, "add_special_tokens": False},
+                                },
+                            }
+                        requests.append(request)
+                    inference_kwargs = {}
+                    if images is not None:
+                        # Match admission, independent of checkpoint defaults.
+                        inference_kwargs["tokenization_kwargs"] = {"add_special_tokens": False, "truncation": False}
                 responses = self._model.embed(
                     requests, pooling_params=_pooling_params_for_normalize(False), **inference_kwargs
                 )
-                if images is not None:
-                    actual_lengths = [len(response.prompt_token_ids) for response in responses]
-                    if actual_lengths != expected_lengths:
-                        raise ValueError(
-                            "vLLM image token expansion does not match checkpoint processor admission: "
-                            f"expected={expected_lengths}, actual={actual_lengths}."
-                        )
-                vectors = torch.tensor([r.outputs.embedding for r in responses], dtype=torch.float32)
+                with nvtx_layers.span("NRL", "validate_convert_outputs"):
+                    if images is not None:
+                        actual_lengths = [len(response.prompt_token_ids) for response in responses]
+                        if actual_lengths != expected_lengths:
+                            raise ValueError(
+                                "vLLM image token expansion does not match checkpoint processor admission: "
+                                f"expected={expected_lengths}, actual={actual_lengths}."
+                            )
+                    vectors = torch.tensor([r.outputs.embedding for r in responses], dtype=torch.float32)
             if vectors.shape != (len(current), self.output_dimension) or not torch.isfinite(vectors).all():
                 raise ValueError("Checkpoint returned invalid dense embedding vectors.")
             outputs.append(torch.nn.functional.normalize(vectors, dim=-1) if self.normalize else vectors)
@@ -419,8 +424,9 @@ class Nemotron35Embedder:
 
         images = []
         try:
-            for value in images_b64:
-                images.append(decode_base64_image(value))
+            with nvtx_layers.span("NRL", "decode_base64_image"):
+                for value in images_b64:
+                    images.append(decode_base64_image(value))
             return self._encode(list(texts), images=images, batch_size=batch_size)
         finally:
             for image in images:
