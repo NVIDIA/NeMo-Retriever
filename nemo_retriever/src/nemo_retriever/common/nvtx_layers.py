@@ -182,7 +182,16 @@ def _span(layer: str, name: str) -> _Span:
 
 
 def span(layer: str, name: str) -> Any:
-    """Return a context manager that emits ``name`` in ``layer`` when ``NRL_NVTX`` is set, else a no-op."""
+    """Return a context manager that emits one NVTX range when ``NRL_NVTX`` is set.
+
+    Args:
+        layer: NVTX domain that owns the range: ``NRL``, ``vLLM``, ``Ray``, or ``torch``.
+        name: Range name shown in the profiler timeline.
+
+    Returns:
+        A reusable context manager that pushes the range on entry and pops it on
+        exit. When ``NRL_NVTX`` is unset, a shared no-op context manager.
+    """
     if not ENABLED:
         return _NULL
     return _span(layer, name)
@@ -285,9 +294,19 @@ def _install_tensor_syncs() -> None:
 
 
 def install(*groups: str) -> None:
-    """Wrap the targets of ``groups`` once per process; a no-op unless ``NRL_NVTX`` is ``1`` or ``full``.
+    """Wrap the third-party targets of ``groups`` once per process.
 
-    ``NRL_NVTX=full`` also wraps CUDA host syncs and, in Ray workers, Ray serialization.
+    Does nothing unless ``NRL_NVTX`` is ``1`` or ``full``. ``NRL_NVTX=full`` also
+    wraps CUDA host syncs and, in Ray workers, Ray serialization. Targets that
+    cannot be imported are skipped with one warning.
+
+    Args:
+        *groups: Target groups to wrap: ``page_elements``, ``ocr``, ``vllm``,
+            ``torch``, or ``ray``. Unknown groups wrap nothing, and groups that
+            are already installed are skipped.
+
+    Returns:
+        None.
     """
     if not ENABLED:
         return
