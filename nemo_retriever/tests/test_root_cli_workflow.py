@@ -161,7 +161,7 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
     assert extract_params.dpi == 200
-    assert extract_params.extract_infographics is False
+    assert extract_params.extract_infographics is True
     assert extract_params.extract_page_as_image is True
     assert fake_ingestor.extract.call_args.kwargs == {}
     # Graph actor selection, not the CLI driver, chooses the default checkpoint.
@@ -1537,6 +1537,7 @@ def test_root_ingest_passes_high_level_extract_overrides(monkeypatch, tmp_path) 
             "--no-extract-tables",
             "--no-extract-images",
             "--no-extract-charts",
+            "--no-extract-infographics",
             "--no-extract-page-as-image",
         ],
     )

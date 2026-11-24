@@ -42,6 +42,66 @@ def test_caption_images_writes_back():
     assert result.iloc[0]["images"][1]["text"] == "cap2"
 
 
+def test_caption_images_captions_infographics_that_replace_images():
+    from nemo_retriever.operators.extract.caption.caption import caption_images
+
+    page_b64 = _make_test_png_b64((200, 200))
+    df = pd.DataFrame(
+        [
+            {
+                "text": "page",
+                "page_image": {"image_b64": page_b64},
+                "images": [],
+                "infographic": [
+                    {"bbox_xyxy_norm": [0.0, 0.0, 0.5, 0.5], "text": "", "replaces_image": True},
+                    {"bbox_xyxy_norm": [0.5, 0.5, 1.0, 1.0], "text": "ocr"},
+                ],
+            }
+        ]
+    )
+    mock_model = MagicMock(spec_set=["caption_batch"])
+    mock_model.caption_batch.return_value = ["a chart of sales"]
+    result = caption_images(df, model=mock_model, caption_infographics=False)
+    assert mock_model.caption_batch.call_count == 1
+    assert len(mock_model.caption_batch.call_args.args[0]) == 1
+    assert result.iloc[0]["infographic"][0]["caption"] == "a chart of sales"
+    assert "caption" not in result.iloc[0]["infographic"][1]
+
+
+def test_caption_images_captions_replacing_infographics_in_arrow_backed_column():
+    from nemo_retriever.operators.extract.caption.caption import caption_images
+
+    pa = pytest.importorskip("pyarrow")
+
+    page_b64 = _make_test_png_b64((200, 200))
+    infographic = [{"bbox_xyxy_norm": [0.0, 0.0, 0.5, 0.5], "text": "", "replaces_image": True, "caption": ""}]
+    df = pd.DataFrame(
+        {
+            "text": ["page"],
+            "page_image": [{"image_b64": page_b64}],
+            "infographic": pd.Series(
+                [infographic],
+                dtype=pd.ArrowDtype(
+                    pa.list_(
+                        pa.struct(
+                            [
+                                ("bbox_xyxy_norm", pa.list_(pa.float64())),
+                                ("text", pa.string()),
+                                ("replaces_image", pa.bool_()),
+                                ("caption", pa.string()),
+                            ]
+                        )
+                    )
+                ),
+            ),
+        }
+    )
+    mock_model = MagicMock(spec_set=["caption_batch"])
+    mock_model.caption_batch.return_value = ["a chart of sales"]
+    result = caption_images(df, model=mock_model, caption_infographics=False)
+    assert result.iloc[0]["infographic"][0]["caption"] == "a chart of sales"
+
+
 def test_caption_images_skips_already_captioned():
     from nemo_retriever.operators.extract.caption.caption import caption_images
 

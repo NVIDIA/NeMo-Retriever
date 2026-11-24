@@ -205,7 +205,7 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
     assert plan.extract_params.extract_nested_images is False
     assert plan.extract_params.extract_tables is True
     assert plan.extract_params.extract_charts is True
-    assert plan.extract_params.extract_infographics is False
+    assert plan.extract_params.extract_infographics is True
     assert plan.extract_params.extract_page_as_image is True
     assert plan.extract_params.use_page_elements is True
     assert plan.create_kwargs == {"run_mode": "inprocess"}
