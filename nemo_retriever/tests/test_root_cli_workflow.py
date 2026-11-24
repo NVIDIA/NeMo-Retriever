@@ -1314,7 +1314,6 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     assert "--service-url" not in result.output
     assert "--ray-address" in result.output
     assert "--profile" in result.output
-    assert "<auto|fast-text>" in result.output
     assert "--extract-images" in result.output
     assert "--use-page" not in result.output
     assert "--use-graphic" not in result.output
@@ -1390,7 +1389,7 @@ def test_root_ingest_service_help_hides_local_only_options(monkeypatch: pytest.M
 
 
 def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, tmp_path) -> None:
-    document = tmp_path / "fast.pdf"
+    document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
     def fail_create_ingestor(**_kwargs: Any) -> Any:
@@ -1400,18 +1399,15 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
 
     result = RUNNER.invoke(
         cli_main.app,
-        ["ingest", "local", str(document), "--profile", "fast-text", "--dry-run"],
+        ["ingest", "local", str(document), "--dry-run"],
     )
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["dry_run"] is True
-    assert payload["profile"] == "fast-text"
+    assert payload["profile"] == "auto"
     assert payload["create_ingestor"] == {"run_mode": "inprocess"}
-    assert payload["extract"]["method"] == "pdfium"
-    assert payload["extract"]["extract_images"] is False
-    assert payload["extract"]["use_page_elements"] is False
-    assert payload["extract"]["extract_tables"] is False
+    assert payload["extract"]["method"] == "pdfium_hybrid"
 
 
 @pytest.mark.parametrize("mode", ["local", "batch"])
@@ -1729,16 +1725,17 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     assert kwargs["av_fuse_params"].enabled is False
 
 
-def test_root_ingest_rejects_removed_profiles(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("profile", ["fast-text", "ocr"])
+def test_root_ingest_rejects_removed_profiles(profile: str, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
     monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", "ocr"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", profile])
 
     assert result.exit_code == 2
-    assert "is not one of 'auto', 'fast-text'" in result.output
+    assert f"'{profile}' is not one of 'auto'" in result.output
 
 
 def test_root_ingest_routes_tiff_inputs_by_default_to_auto_planner(monkeypatch, tmp_path) -> None:

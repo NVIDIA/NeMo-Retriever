@@ -30,6 +30,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 - `ExtractParams.page_elements_api_key` now reaches page-element detection. Earlier versions ignored it and sent `api_key`. Page-element detection still uses `api_key` when you do not set `page_elements_api_key`.
 - An explicit `ExtractParams.api_key` now takes precedence over `NVIDIA_API_KEY` or `NGC_API_KEY` for page-element detection and OCR when you do not set `page_elements_api_key` or `ocr_api_key`. Earlier versions filled the unset per-stage keys from the environment, so the environment key overrode the explicit `api_key` for OCR.
 - The hidden `retriever recall` command is removed. Use `retriever query` to retrieve results. To score a LanceDB table against a query CSV, call `evaluate_recall()` with a `RecallConfig` from `nemo_retriever.tools.recall`. For BEIR metrics, refer to [Evaluate on your data](evaluate-on-your-data.md).
+- The `fast-text` ingest profile is removed, and `--profile fast-text` now fails with an invalid-value error. Omit `--profile` to use the `auto` profile. To keep native-text-only PDF extraction, pass `--method pdfium` with `--no-extract-images`, `--no-extract-tables`, `--no-extract-charts`, and `--no-extract-page-as-image`. In Python, also set `use_page_elements=False` in `ExtractParams` to skip Page Elements.
 
 ## 26.08.2 Helm Chart Patch { #release-26082 }
 

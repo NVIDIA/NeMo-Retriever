@@ -31,7 +31,7 @@ ProfileOption = Annotated[
     IngestProfileValue,
     typer.Option(
         "--profile",
-        help="Ingest profile: auto or fast-text. Use fast-text for large text-only PDF fallback.",
+        help="Ingest profile: auto.",
     ),
 ]
 LanceDbUriOption = Annotated[
