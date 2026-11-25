@@ -153,8 +153,8 @@ def _render_page_to_base64(
     else:
         render_scale = max(float(dpi) / 72.0, 0.01)
     bitmap = page.render(scale=render_scale)
-
-    arr = convert_bitmap_to_corrected_numpy(bitmap)
+    native_bgr = cv2 is not None and bitmap.mode == "BGR"
+    arr = bitmap.to_numpy() if native_bgr else convert_bitmap_to_corrected_numpy(bitmap)
 
     orig_h, orig_w = int(arr.shape[0]), int(arr.shape[1])
 
@@ -169,13 +169,13 @@ def _render_page_to_base64(
     fmt = image_format.lower()
     if cv2 is not None:
         if fmt == "jpeg":
-            bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            bgr = arr if native_bgr else cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
             ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, int(jpeg_quality)])
             if not ok:
                 raise RuntimeError("cv2.imencode failed for JPEG")
             encoded_bytes = buf.tobytes()
         else:
-            bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            bgr = arr if native_bgr else cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
             ok, buf = cv2.imencode(".png", bgr, [cv2.IMWRITE_PNG_COMPRESSION, 3])
             if not ok:
                 raise RuntimeError("cv2.imencode failed for PNG")
