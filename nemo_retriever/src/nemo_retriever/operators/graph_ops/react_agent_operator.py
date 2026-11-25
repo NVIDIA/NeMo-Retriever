@@ -14,6 +14,7 @@ retrieval log and final doc-id list into the exploded DataFrame that
 
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import ContextVar
@@ -30,6 +31,7 @@ from nemo_retriever._agentic.nemo_agent import (
     create_retrieve_tool,
 )
 from nemo_retriever._agentic.nemo_agent.atif import persist_atif_trajectory
+from nemo_retriever._agentic.nemo_agent.jev import JevClient, JevClientConfig, JevControlledAgent, JevControllerConfig
 from nemo_retriever._agentic.nemo_agent.llm import create_llm, create_llm_config
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -154,6 +156,17 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     chat_completion_fn : callable, optional
         OpenAI-compatible completion callable (e.g. the local in-process vLLM
         adapter). When set, forwarded to the ``"callable"`` LLM backend.
+    controller : {"llm", "jev"}
+        Who chooses the loop's actions. ``"llm"`` (default) runs the LLM
+        ReAct agent; ``"jev"`` runs
+        :class:`~nemo_retriever._agentic.nemo_agent.jev.JevControlledAgent`,
+        which leaves final ranking to the selection stage. Select mode only.
+    jev_client : dict, optional
+        :class:`~nemo_retriever._agentic.nemo_agent.jev.JevClientConfig`
+        fields; required when ``controller="jev"``.
+    jev_controller_options : dict, optional
+        Extra :class:`~nemo_retriever._agentic.nemo_agent.jev.JevControllerConfig`
+        fields (thresholds and budgets).
 
     Notes
     -----
@@ -188,8 +201,21 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         temperature: Optional[float] = None,
         backend: str = "callable",
         chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
+        controller: Literal["llm", "jev"] = "llm",
+        jev_client: Optional[Dict[str, Any]] = None,
+        jev_controller_options: Optional[Dict[str, Any]] = None,
     ) -> None:
         super().__init__()
+        if controller not in ("llm", "jev"):
+            raise ValueError(f"controller must be 'llm' or 'jev', got {controller!r}.")
+        if controller == "jev":
+            if mode != "select":
+                raise ValueError("controller='jev' supports mode='select' only.")
+            if not jev_client:
+                raise ValueError("controller='jev' requires jev_client settings.")
+        self._controller = controller
+        self._jev_client = dict(jev_client or {})
+        self._jev_controller_options = dict(jev_controller_options or {})
         self._invoke_url = invoke_url or self._NVIDIA_BUILD_ENDPOINT
         self._llm_model = llm_model
         self._retriever_fn = retriever_fn
@@ -272,21 +298,28 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                 name="retrieve",
                 default_top_k=int(self._retriever_top_k),
             )
-            self._agent = Agent(
-                config=AgentConfig(
-                    mode=self._mode,
-                    target_top_k=int(self._target_top_k),
-                    user_msg_type="with_results",
-                    extended_relevance=True,
-                    enable_think=False,
-                    ensure_new_docs=True,
-                    end_tool_with_msg=False,
-                    max_steps=int(self._max_steps),
-                    on_error="never_raise",
-                ),
-                llm=self._build_llm(),
-                retrieve_tool=retrieve_tool,
+            config_kwargs: Dict[str, Any] = dict(
+                mode=self._mode,
+                target_top_k=int(self._target_top_k),
+                user_msg_type="with_results",
+                extended_relevance=True,
+                enable_think=False,
+                ensure_new_docs=True,
+                end_tool_with_msg=False,
+                max_steps=int(self._max_steps),
+                on_error="never_raise",
             )
+            if self._controller == "jev":
+                self._agent = JevControlledAgent(
+                    config=JevControllerConfig(**config_kwargs, **self._jev_controller_options),
+                    llm=self._build_llm(),
+                    retrieve_tool=retrieve_tool,
+                    jev=JevClient(JevClientConfig(**self._jev_client)),
+                )
+            else:
+                self._agent = Agent(
+                    config=AgentConfig(**config_kwargs), llm=self._build_llm(), retrieve_tool=retrieve_tool
+                )
         return self._agent
 
     def pop_query_usage(self, query_id: str) -> Dict[str, Any]:
@@ -311,7 +344,10 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         """
         if self._agent is None:
             return {}
-        return self._agent.llm.pop_query_usage(str(query_id))
+        usage = self._agent.llm.pop_query_usage(str(query_id))
+        if isinstance(self._agent, JevControlledAgent):
+            usage.update(self._agent.jev.pop_query_usage(str(query_id)))
+        return usage
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -439,6 +475,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             result.succeeded,
             (final_doc_ids or [])[:_LOG_DOC_ID_LIMIT],
         )
+        jev_decisions = result.extra_data.get("jev_decisions")
+        if jev_decisions:
+            logger.info("ReActAgentOperator: query=%s jev_decisions=%s", query_id, json.dumps(jev_decisions))
         return _build_output_rows(str(query_id), str(query_text), step_lists, final_doc_ids)
 
 

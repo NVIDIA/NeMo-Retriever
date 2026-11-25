@@ -69,8 +69,8 @@ class SelectionAgentConfig(BaseAgentLoopConfig):
     ----------
     system_prompt:
         Packaged prompt name or filesystem path; ``None`` selects the default
-        selection prompt. Render variables: ``extended_relevance`` and the
-        per-run ``top_k``.
+        selection prompt. Render variables: ``extended_relevance``,
+        ``enable_think`` and the per-run ``top_k``.
     target_top_k:
         How many documents a run selects — one k per agent instance. Runs with
         fewer candidates than ``target_top_k`` self-adjust to the candidate
@@ -249,6 +249,7 @@ class SelectionAgent(_BaseAgentLoop):
         system_prompt = render_system_prompt(
             self._prompt_name,
             extended_relevance=self.config.extended_relevance,
+            enable_think=self._think_tool is not None,
             top_k=feasible_topk,
         )
         end_tool = LogSelectedDocs(
