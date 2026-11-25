@@ -15,6 +15,7 @@ from nemo_retriever.operators.vdb import IngestVdbOperator
 from nemo_retriever.common.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     filter_hits_by_content_metadata,
+    load_meta_dataframe,
     normalize_sidecar_cell_value,
     parse_hit_content_metadata,
     split_sidecar_from_vdb_kwargs,
@@ -44,6 +45,21 @@ def test_normalize_sidecar_cell_value_list_and_dict_no_raise() -> None:
     assert normalize_sidecar_cell_value({"k": 1}) == {"k": 1}
     np = pytest.importorskip("numpy")
     assert (normalize_sidecar_cell_value(np.array([1, 2])) == np.array([1, 2])).all()
+
+
+def test_load_meta_dataframe_reads_ndjson_lines(tmp_path: Path) -> None:
+    ndjson_path = tmp_path / "meta.ndjson"
+    ndjson_path.write_text(
+        '{"source": "a.pdf", "meta_a": 1}\n{"source": "b.pdf", "meta_a": 2}\n',
+        encoding="utf-8",
+    )
+
+    df = load_meta_dataframe(ndjson_path)
+
+    assert df.to_dict(orient="records") == [
+        {"source": "a.pdf", "meta_a": 1},
+        {"source": "b.pdf", "meta_a": 2},
+    ]
 
 
 def test_split_sidecar_from_vdb_kwargs_round_trip() -> None:
