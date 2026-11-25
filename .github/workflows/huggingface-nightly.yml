@@ -40,6 +40,19 @@ on:
         required: false
         default: ""
         type: string
+      ocr_build_stack:
+        description: "OCR runtime family (torch213 uses 2.1.0.dev nightlies)"
+        required: true
+        default: "torch211"
+        type: choice
+        options:
+          - torch211
+          - torch213
+      ocr_source_revision:
+        description: "Full HF source commit SHA (required for torch213)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -59,9 +72,21 @@ jobs:
           INPUT_PACKAGE: ${{ inputs.package }}
           INPUT_RELEASE_TYPE: ${{ inputs.release_type }}
           INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
+          INPUT_OCR_BUILD_STACK: ${{ inputs.ocr_build_stack }}
+          INPUT_OCR_SOURCE_REVISION: ${{ inputs.ocr_source_revision }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ -n "${INPUT_OCR_SOURCE_REVISION}" && ! "${INPUT_OCR_SOURCE_REVISION}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::ocr_source_revision must be a full 40-character Git commit SHA"
+              exit 1
+            fi
+            if [[ "${INPUT_OCR_BUILD_STACK}" == "torch213" ]]; then
+              if [[ "${INPUT_PACKAGE}" != "nemotron-ocr-v2" || -z "${INPUT_OCR_SOURCE_REVISION}" ]]; then
+                echo "::error::torch213 requires package=nemotron-ocr-v2 and an exact ocr_source_revision"
+                exit 1
+              fi
+            fi
             if [[ "${INPUT_RELEASE_TYPE}" == "stable" ]]; then
               if [[ -z "${INPUT_RELEASE_VERSION}" ]]; then
                 echo "::error::release_version is required when release_type=stable"
@@ -180,7 +205,9 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - runner: ubuntu-latest
+          # setup-python uses the host toolcache inside the container. Keep the
+          # host distro aligned so Python's SSL libraries can load there.
+          - runner: ubuntu-24.04
             cuda_image: nvidia/cuda:13.0.0-devel-ubuntu24.04
             arch: x86_64
           - runner: ubuntu-24.04-arm
@@ -266,15 +293,36 @@ jobs:
           echo "upload_to=${upload_to}" >> "$GITHUB_OUTPUT"
           echo "skip_existing=${skip_existing}" >> "$GITHUB_OUTPUT"
 
-      - name: Build ${{ matrix.ocr.id }} (and maybe upload) for Python ${{ matrix.python.version }}
+      - name: Select OCR build stack
+        id: ocr_stack
+        env:
+          INPUT_OCR_BUILD_STACK: ${{ inputs.ocr_build_stack }}
+          DEFAULT_NIGHTLY_BASE_VERSION: ${{ matrix.ocr.nightly_base_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          torch_version="2.11.0"
+          torchvision_version="0.26.0"
+          nightly_base_version="${DEFAULT_NIGHTLY_BASE_VERSION}"
+          if [[ "${INPUT_OCR_BUILD_STACK}" == "torch213" ]]; then
+            torch_version="2.13.0"
+            torchvision_version="0.28.0"
+            nightly_base_version="2.1.0"
+          fi
+          echo "torch_version=${torch_version}" >> "$GITHUB_OUTPUT"
+          echo "torchvision_version=${torchvision_version}" >> "$GITHUB_OUTPUT"
+          echo "nightly_base_version=${nightly_base_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and validate ${{ matrix.ocr.id }} for Python ${{ matrix.python.version }}
         env:
           NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
           CUDA_HOME: /usr/local/cuda
           BUILD_CPP_EXTENSION: "1"
           BUILD_CPP_FORCE: "1"
-          OCR_TORCH_VERSION: "2.11.0"
-          OCR_TORCHVISION_VERSION: "0.26.0"
+          OCR_TORCH_VERSION: ${{ steps.ocr_stack.outputs.torch_version }}
+          OCR_TORCHVISION_VERSION: ${{ steps.ocr_stack.outputs.torchvision_version }}
+          OCR_NIGHTLY_BASE_VERSION: ${{ steps.ocr_stack.outputs.nightly_base_version }}
+          OCR_SOURCE_REVISION: ${{ inputs.ocr_source_revision }}
           INPUT_RELEASE_TYPE: ${{ inputs.release_type }}
           INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
           TORCH_CUDA_ARCH_LIST: "8.0;8.6;8.9;9.0;10.0;12.0+PTX"
@@ -283,17 +331,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          upload_flag=""
-          repo_url="https://upload.pypi.org/legacy/"
-          token_env="PYPI_API_TOKEN"
-          if [[ "${{ steps.target.outputs.upload_to }}" == "none" ]]; then
-            upload_flag=""
-          else
-            upload_flag="--upload"
-          fi
-          skip_existing_flag=""
-          if [[ "${{ steps.target.outputs.skip_existing }}" == "true" ]]; then
-            skip_existing_flag="--skip-existing"
+          source_args=()
+          if [[ -n "${OCR_SOURCE_REVISION}" ]]; then
+            source_args=(--source-revision "${OCR_SOURCE_REVISION}")
           fi
 
           # The upstream build script checks ARCH to skip x86-only SIMD
@@ -312,8 +352,8 @@ jobs:
           fi
 
           release_type="nightly"
-          expected_version="${{ matrix.ocr.nightly_base_version }}.dev"
-          version_args=(--nightly-base-version "${{ matrix.ocr.nightly_base_version }}")
+          expected_version="${OCR_NIGHTLY_BASE_VERSION}.dev"
+          version_args=(--nightly-base-version "${OCR_NIGHTLY_BASE_VERSION}")
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${INPUT_RELEASE_TYPE}" == "stable" ]]; then
             release_type="stable"
             expected_version="${INPUT_RELEASE_VERSION}"
@@ -321,6 +361,7 @@ jobs:
           fi
 
           python --version
+          python -c "import ssl; print(ssl.OPENSSL_VERSION)"
           python -m pip install "packaging>=24"
           python ci/scripts/nightly_build_publish.py \
             --repo-id "${{ matrix.ocr.id }}" \
@@ -329,9 +370,11 @@ jobs:
             --dist-dir "dist-out" \
             --project-subdir "nemotron-ocr" \
             "${version_args[@]}" \
+            "${source_args[@]}" \
             --set-requires-python ">=3.11,<3.14" \
             ${sdist_arg} \
             --hatch-force-platform-wheel \
+            --hatch-core-metadata-version "2.4" \
             --auditwheel-repair \
             --auditwheel-exclude libtorch_cpu.so \
             --auditwheel-exclude libtorch_cuda.so \
@@ -351,16 +394,14 @@ jobs:
             --pin-runtime-dependency "torchvision" \
             --build-env "BUILD_CPP_EXTENSION=1" \
             --build-env "BUILD_CPP_FORCE=1" \
-            ${arch_env_arg} \
-            ${upload_flag} \
-            --repository-url "${repo_url}" \
-            --token-env "${token_env}" \
-            ${skip_existing_flag}
+            ${arch_env_arg}
 
           export EXPECTED_OCR_VERSION="${expected_version}"
           export OCR_RELEASE_TYPE="${release_type}"
           python - <<'PY'
+          import json
           import os
+          import subprocess
           import sys
           import zipfile
           from email.parser import Parser
@@ -418,10 +459,12 @@ jobs:
                   metadata_names = [n for n in names if n.endswith(".dist-info/METADATA")]
                   metadata = "\n".join(zf.read(n).decode("utf-8") for n in metadata_names)
               metadata_message = Parser().parsestr(metadata)
+              if metadata_message.get("Metadata-Version") != "2.4":
+                  raise SystemExit("OCR distributions must use core metadata 2.4")
               if f"Name: {expected_project}" not in metadata:
                   raise SystemExit(f"Built wheel metadata does not declare project {expected_project!r}")
               metadata_version = metadata_message.get("Version")
-              metadata_license = metadata_message.get("License")
+              metadata_license = metadata_message.get("License-Expression") or metadata_message.get("License")
               if metadata_license != expected_license:
                   raise SystemExit(
                       "Built wheel metadata does not declare expected license "
@@ -481,7 +524,43 @@ jobs:
                       f"{wheel.name}"
                   )
           print("Verified nemotron_ocr_cpp extension ABI:", py_tag)
+          manifest = {
+              "source_url": "${{ matrix.ocr.url }}",
+              "source_revision": subprocess.check_output(
+                  ["git", "-C", ".work/${{ matrix.ocr.id }}", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "orchestrator_revision": os.environ["GITHUB_SHA"],
+              "python": sys.version,
+              "architecture": "${{ matrix.platform.arch }}",
+              "cuda_image": "${{ matrix.platform.cuda_image }}",
+              "torch": os.environ["OCR_TORCH_VERSION"],
+              "torchvision": os.environ["OCR_TORCHVISION_VERSION"],
+              "wheels": [wheel.name for wheel in wheels],
+              "wheel_version": metadata_version,
+          }
+          (dist_dir / "build-info.json").write_text(json.dumps(manifest, indent=2) + "\n")
           PY
+
+      - name: Publish validated OCR distributions
+        if: ${{ steps.target.outputs.upload_to == 'pypi' }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          SKIP_EXISTING: ${{ steps.target.outputs.skip_existing }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          distributions=(dist-out/${{ matrix.ocr.id }}/*.whl dist-out/${{ matrix.ocr.id }}/*.tar.gz)
+          skip_args=()
+          if [[ "${SKIP_EXISTING}" == "true" ]]; then
+            skip_args=(--skip-existing)
+          fi
+          .venv-build/bin/python -m pip install twine
+          .venv-build/bin/python -m twine check "${distributions[@]}"
+          .venv-build/bin/python -m twine upload --non-interactive --verbose \
+            --repository-url https://upload.pypi.org/legacy/ \
+            "${skip_args[@]}" "${distributions[@]}"
 
       - name: Upload build artifacts (GH Actions)
         if: always()
